@@ -1,0 +1,280 @@
+library("readxl")
+data <- read_excel("data.xlsx", sheet= 1
+                   , col_names= TRUE, col_types= NULL, na="", skip= 0)
+mult_matrix <- function(a, b) {
+  a_N = nrow(a)
+  a_p = ncol(a)
+  b_N = nrow(b)
+  b_p = ncol(b)
+  result = matrix(NA, nrow = a_N, ncol = b_p)
+  for (i1 in 1:a_N) {
+    for (j2 in 1:b_p) {
+      for (i2 in 1:b_N) {
+        if (is.na(result[[i1, j2]])) {
+          result[[i1, j2]] = 0
+        }
+        result[[i1, j2]] = result[[i1, j2]] + (a[[i1, i2]] * b[[i2, j2]])
+      }
+    }
+  }
+  return(result)
+}
+
+average <- function (table) {
+  N = nrow(table)
+  p = ncol(table)
+  result = c()
+  for (j in 1:p) {
+    avg = 0
+    for (i in 1:N) {
+      avg = avg + (table[[i,j]] / N)
+    }
+    result = append(result, avg)
+  }
+  return(result)
+}
+average_columns = average(data)
+dispersion <- function (table) {
+  N = nrow(table)
+  p = ncol(table)
+  result = c()
+  for (j in 1:p) {
+    disp = 0
+    for (i in 1:N) {
+      disp = disp + (
+        ((table[[i,j]] - average_columns[j])**2) / N
+      )
+    }
+    result = append(result, disp)
+  }
+  return(result)
+}
+
+dispersion_columns = dispersion(data)
+
+print(dispersion_columns)
+standatization <- function (table, i, j) {
+  N = nrow(table)
+  p = ncol(table)
+  result =
+    (table[[i,j]] - average_columns[j]) / (dispersion_columns[j]**0.5)
+  return(result)
+}
+N = nrow(data)
+p = ncol(data)
+standatization_matrix = matrix(NA, nrow = N, ncol = p)
+for (i in 1:N) {
+  for (j in 1:p) {
+    standatization_matrix[[i,j]] = standatization(data, i, j)
+  }
+}
+print(standatization_matrix)
+correlation <- function (table, i, j) {
+  N = nrow(table)
+  result = 0
+  for (k in 1:N) {
+    result = result + (
+      (standatization_matrix[[k, i]] * standatization_matrix[[k, j]]) / N
+    )
+  }
+  return(result)
+}
+correlation_matrix = matrix(NA, nrow = p, ncol = p)
+for (i in 1:p) {
+  for (j in 1:p) {
+    correlation_matrix[[i,j]] = correlation(data, i, j)
+  }
+}
+print(correlation_matrix)
+sum = 0
+for (i in 1:p) {
+  for (j in 1:p) {
+    if (i != j) {
+      sum = sum + data[[i,j]]**2
+    }
+  }
+}
+d = N * sum
+chi2 = qchisq(0.95, p*(p-1)/2)
+print(d <= chi2)
+print(paste("d = ", d))
+print(paste("chi2 = ", chi2))
+Jacobi <- function(table) {
+  # точность
+  eps = 0.0001
+  N = nrow(table)
+  A = matrix(NA, nrow = N, ncol = N)
+  for (i in 1:N) {
+    for (j in 1:N) {
+      A[[i,j]] = table[[i,j]]
+    }
+  }
+  # Шаг 1
+  T = matrix(NA, nrow = N, ncol = N)
+  for (i in 1:N) {
+    for (j in 1:N) {
+      # единичная матрица
+      T[[i,j]] = if (i==j) 1 else 0
+    }
+  }
+  # Шаг 2
+  sum = 0
+  for (j in 1:N) {
+    for (i in 1:N) {
+      if (i != j) {
+        sum = sum + (A[[i,j]]**2)
+      }
+    }
+  }
+  a0 = sqrt(sum) / N
+  a_k = a0
+  continue = TRUE
+  while(continue) {
+    # Шаг 3
+    abs_max_not_diagonal = 0
+    p = -1
+    q = -1
+    for (i in 1:N) {
+      for (j in 1:N) {
+        if (i != j && abs(A[[i,j]]) > abs(abs_max_not_diagonal)) {
+          p = i
+          q = j
+          abs_max_not_diagonal = A[[i,j]]
+        }
+      }
+    }
+    # Шаг 4
+    if (abs(abs_max_not_diagonal) > a_k) {
+      y_ = (A[[p,p]] - A[[q,q]]) / 2
+      x_ = if (y_ == 0) -1
+      else (-sign(y_) * A[[p,q]] / sqrt(A[[p,q]]**2 + y_**2))
+      s = x_ / sqrt(2*(1+sqrt(1-x_**2)))
+      c = sqrt(1-s**2)
+      for (i in 1:N) {
+        if (i != p && i != q) {
+          Z1 = A[[i,p]]
+          Z2 = A[[i,q]]
+          A[[q,i]] = Z1*s + Z2*c
+          A[[i,q]] = A[[q,i]]
+          A[[i,p]] = Z1*c - Z2*s
+          A[[p,i]] = A[[i,p]]
+        }
+      }
+      Z5 = s**2
+      Z6 = c**2
+      Z7 = s*c
+      V1 = A[[p,p]]
+      V2 = A[[p,q]]
+      V3 = A[[q,q]]
+      A[[p,p]] = V1*Z6 + V3*Z5 - 2*V2*Z7
+      A[[q,q]] = V1*Z5 + V3*Z6 + 2*V2*Z7
+      A[[p,q]] = (V1-V3)*Z7 + V2*(Z6-Z5)
+      A[[q,p]] = A[[p,q]]
+      for (i in 1:N){
+        Z3 = T[[i,p]]
+        Z4 = T[[i,q]]
+        T[[i,q]] = Z3*s + Z4*c
+        T[[i,p]] = Z3*c - Z4*s
+      }
+    }
+    # Шаг 5
+    continue = FALSE
+    for (i in 1:N){
+      for (j in 1:N) {
+        if (i != j && abs(A[[i,j]]) > eps*a0) {
+          continue = TRUE
+        }
+      }
+    }
+    a_k = a_k / (N**2)
+  }
+  lambdas = c()
+  for (i in 1:N) {
+    lambdas[i] = A[[i,i]]
+  }
+  return(list(lambdas, T))
+}
+res = Jacobi(correlation_matrix)
+lambdas = res[[1]]
+T = res[[2]]
+print(lambdas)
+print(T)
+sort_pairs = sort(lambdas, decreasing = TRUE, index.return=TRUE)
+C_vect = matrix(NA, nrow=nrow(T), ncol=ncol(T))
+for (i in 1:length(lambdas)) {
+  lambdas[[i]] = sort_pairs$x[[i]]
+  C_vect[, i] = T[, sort_pairs$ix[[i]] ]
+}
+print(lambdas)
+print(C_vect)
+mgk = matrix(NA, nrow=length(lambdas), ncol=length(lambdas))
+for(i in 1:length(lambdas)) {
+  for(j in 1:length(lambdas)) {
+    mgk[[i,j]] = if (i == j) lambdas[[i]] else 0
+  }
+}
+print(mgk)
+#Вычислим матрицу нагрузок на главные компоненты путем нормировки собственных векторов.
+mn = matrix(NA, nrow = nrow(C_vect), ncol = ncol(C_vect))
+for (i in 1:nrow(C_vect)) {
+  for (j in 1:ncol(C_vect)) {
+    mn[[i,j]] = standatization(C_vect, i, j)
+  }
+}
+print(mn)
+#проекции объектов на главные компоненты
+y = mult_matrix(standatization_matrix, C_vect)
+#Проверим равенство сумм выборочных дисперсий 
+#исходных признаков Х и выборочных дисперсий проекций объектов на главные компоненты у
+dispersion_X = dispersion(standatization_matrix)
+dispersion_y = dispersion(y)
+print(dispersion_X)
+print(dispersion_y)
+print(sum(dispersion_X))
+print(sum(dispersion_y))
+# Построить матрицу ковариации для проекций объектов на главные компоненты.
+covariance <- function (table, i, j) {
+  N = nrow(table)
+  result = 0
+  for (k in 1:N) {
+    result = result + (
+      (table[[k,i]] - average_columns[i]) * (table[[k,j]] - average_columns[j]) / N
+    )
+  }
+  return(result)
+}
+
+covariation_matrix = matrix(NA, nrow = p, ncol = p)
+for (i in 1:p) {
+  for (j in 1:p) {
+    covariation_matrix[[i,j]] = covariance(y, i, j)
+  }
+}
+print(covariation_matrix)
+p_1 = 1
+
+for (i in 1:length(lambdas)) {
+  sum = 0
+  for (j in 1:i) {
+    sum = sum + lambdas[j]
+  }
+  p_1 = i
+  part = sum / sum(lambdas)
+  if (part > 0.95) {
+    print(p_1)
+    break
+  }
+}
+I = sum(lambdas[1:p_1]) / sum(lambdas)
+
+print(I)
+
+#Анализ первых двух главных компонент
+for (i in 1:nrow(C_vect)) {
+  print(C_vect[i, 1]) 
+}
+
+for (i in 1:nrow(C_vect)) {
+  print(C_vect[i, 2]) 
+}
+
